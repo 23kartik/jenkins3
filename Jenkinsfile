@@ -1,62 +1,26 @@
-#!/bin/groovy
 pipeline {
-  agent any
- tools {nodejs "nodejs"}
-  stages {
-    stage('Startup') {
-      steps {
-        script {
-          sh 'npm install --legacy-peer-deps'
-        }
-      }
+    agent any
+  tools {nodejs "nodejs"}
+    environment {
+        CI = 'true'
     }
-    stage('Test') {
-      steps {
-        script {
-          sh 'npm run test'
+    stages {
+        stage('Build') {
+            steps {
+                sh 'npm install'
+            }
         }
-      }
-      post {
-        always {
-          step([$class: 'CoberturaPublisher', coberturaReportFile: 'output/coverage/jest/cobertura-coverage.xml'])
+        stage('Test') {
+            steps {
+                sh './jenkins/scripts/test.sh'
+            }
         }
-      }
+        stage('Deliver') {
+            steps {
+                sh './jenkins/scripts/deliver.sh'
+                input message: 'Finished using the web site? (Click "Proceed" to continue)'
+                sh './jenkins/scripts/kill.sh'
+            }
+        }
     }
-    stage('Build') {
-      steps {
-        script {
-          sh 'npm start'
-          sh 'npm pack'
-        }
-      }
-    }
-    stage('Deploy') {
-      when {
-        expression {
-          currentBuild.result == null || currentBuild.result == 'SUCCESS'
-        }
-      }
-      steps {
-        script {
-          def server = Artifactory.server 'My_Artifactory'
-          uploadArtifact(server)
-        }
-      }
-    }
-  }
-}
-def uploadArtifact(server) {
-  def uploadSpec = """{
-            "files": [
-              {
-                "pattern": "continuous-test-code-coverage-guide*.tgz",
-                "target": "npm-stable/"
-              }
-           ]
-          }"""
-  server.upload(uploadSpec)
-
-  def buildInfo = Artifactory.newBuildInfo()
-  server.upload spec: uploadSpec, buildInfo: buildInfo
-  server.publishBuildInfo buildInfo
 }
